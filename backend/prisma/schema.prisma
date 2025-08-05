@@ -18,7 +18,8 @@ model User {
   updatedAt DateTime @updatedAt
 
   // Relationships
-  prenups            Prenup[]
+  createdPrenups     Prenup[] @relation("CreatedPrenups")
+  partnerPrenups     Prenup[] @relation("PartnerPrenups")
   partnerInvitations PartnerInvitation[]
   financialDisclosures FinancialDisclosure[]
   signatures         Signature[]
@@ -39,8 +40,8 @@ model Prenup {
   updatedAt   DateTime    @updatedAt
 
   // Relationships
-  creator     User        @relation(fields: [createdBy], references: [id])
-  partner     User?       @relation(fields: [partnerId], references: [id])
+  creator     User        @relation("CreatedPrenups", fields: [createdBy], references: [id])
+  partner     User?       @relation("PartnerPrenups", fields: [partnerId], references: [id])
   documents   Document[]
   signatures  Signature[]
   disclosures FinancialDisclosure[]
@@ -79,6 +80,7 @@ model FinancialDisclosure {
   prenup   Prenup @relation(fields: [prenupId], references: [id])
   user     User   @relation(fields: [userId], references: [id])
 
+  @@unique([prenupId, userId], name: "prenupId_userId")
   @@map("financial_disclosures")
 }
 

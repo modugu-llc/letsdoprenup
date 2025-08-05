@@ -5,8 +5,7 @@ import {
   ShieldCheckIcon, 
   ClockIcon, 
   UserGroupIcon,
-  CheckCircleIcon,
-  StarIcon
+  CheckCircleIcon
 } from '@heroicons/react/24/outline';
 
 const HomePage: React.FC = () => {

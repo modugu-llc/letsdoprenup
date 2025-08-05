@@ -81,8 +81,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (token) {
         try {
           const response = await apiService.getCurrentUser();
-          if (response.success && response.data?.user) {
-            dispatch({ type: 'AUTH_SUCCESS', payload: response.data.user });
+          if (response.success && (response.data as any)?.user) {
+            dispatch({ type: 'AUTH_SUCCESS', payload: (response.data as any).user });
             return;
           }
         } catch (error) {

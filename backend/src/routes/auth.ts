@@ -65,8 +65,7 @@ router.post('/register', asyncHandler(async (req: express.Request, res: express.
   // Generate JWT token
   const token = jwt.sign(
     { id: user.id, email: user.email },
-    config.jwtSecret,
-    { expiresIn: config.jwtExpiresIn }
+    config.jwtSecret as string
   );
 
   res.status(201).json({
@@ -103,8 +102,7 @@ router.post('/login', asyncHandler(async (req: express.Request, res: express.Res
   // Generate JWT token
   const token = jwt.sign(
     { id: user.id, email: user.email },
-    config.jwtSecret,
-    { expiresIn: config.jwtExpiresIn }
+    config.jwtSecret as string
   );
 
   const userResponse = {
