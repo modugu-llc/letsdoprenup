@@ -4,10 +4,16 @@ dotenv.config();
 
 export const config = {
   port: parseInt(process.env.PORT || '3001'),
-  databaseUrl: process.env.DATABASE_URL || '',
   jwtSecret: process.env.JWT_SECRET || 'your-super-secret-jwt-key',
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
   nodeEnv: process.env.NODE_ENV || 'development',
+  dynamodb: {
+    region: process.env.AWS_REGION || 'us-east-1',
+    endpoint: process.env.DYNAMODB_ENDPOINT || (process.env.NODE_ENV === 'development' ? 'http://localhost:8000' : undefined),
+    tableName: process.env.DYNAMODB_TABLE_NAME || 'letsdoprenup-data',
+    accessKeyId: process.env.AWS_ACCESS_KEY_ID || 'local',
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY || 'local'
+  },
   docusignConfig: {
     clientId: process.env.DOCUSIGN_CLIENT_ID || '',
     clientSecret: process.env.DOCUSIGN_CLIENT_SECRET || '',
