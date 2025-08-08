@@ -37,7 +37,8 @@ app.get('/health', (req, res) => {
   res.status(200).json({ 
     status: 'OK', 
     timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development'
+    environment: process.env.NODE_ENV || 'development',
+    platform: 'Express Server'
   });
 });
 
@@ -57,9 +58,14 @@ app.use('*', (req, res) => {
 
 const PORT = config.port || 3001;
 
-app.listen(PORT, () => {
-  logger.info(`Server running on port ${PORT}`);
-  logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
-});
+// Only start server if not in Lambda environment
+if (process.env.NODE_ENV !== 'lambda') {
+  app.listen(PORT, () => {
+    logger.info(`🚀 Server running on port ${PORT}`);
+    logger.info(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
+    logger.info(`🗄️  Database: DynamoDB (${config.dynamodb.endpoint || 'AWS'})`);
+    logger.info(`🔗 Health check: http://localhost:${PORT}/health`);
+  });
+}
 
 export default app;
