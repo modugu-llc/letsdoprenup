@@ -1,15 +1,15 @@
 services:
-  postgres:
-    image: postgres:15
-    restart: always
-    environment:
-      POSTGRES_USER: letsdoprenup
-      POSTGRES_PASSWORD: prenuppassword
-      POSTGRES_DB: letsdoprenup
+  dynamodb-local:
+    image: amazon/dynamodb-local:latest
+    container_name: dynamodb-local
     ports:
-      - "5432:5432"
+      - "8000:8000"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - dynamodb-data:/home/dynamodblocal/data
+    working_dir: /home/dynamodblocal
+    command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-dbPath", "./data"]
+    networks:
+      - letsdoprenup-network
 
   backend:
     build: ./backend
@@ -17,13 +17,19 @@ services:
       - "3001:3001"
     environment:
       - NODE_ENV=development
-      - DATABASE_URL=postgresql://letsdoprenup:prenuppassword@postgres:5432/letsdoprenup
       - JWT_SECRET=your-super-secret-jwt-key-change-in-production
+      - DYNAMODB_ENDPOINT=http://dynamodb-local:8000
+      - DYNAMODB_TABLE_NAME=letsdoprenup-data
+      - AWS_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=local
+      - AWS_SECRET_ACCESS_KEY=local
     depends_on:
-      - postgres
+      - dynamodb-local
     volumes:
       - ./backend:/app
       - /app/node_modules
+    networks:
+      - letsdoprenup-network
 
   frontend:
     build: ./frontend
@@ -36,6 +42,12 @@ services:
       - /app/node_modules
     depends_on:
       - backend
+    networks:
+      - letsdoprenup-network
 
 volumes:
-  postgres_data:
+  dynamodb-data:
+
+networks:
+  letsdoprenup-network:
+    driver: bridge

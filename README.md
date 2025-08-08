@@ -1,4 +1,4 @@
-# Let's Do Prenup - MVP Implementation
+# Let's Do Prenup - DynamoDB Migration
 
 A comprehensive online platform for creating legally enforceable prenuptial and postnuptial agreements across key U.S. jurisdictions (California, Washington, New York, Washington D.C., and Virginia).
 
@@ -11,12 +11,12 @@ Let's Do Prenup is a guided, state-specific platform that helps couples create l
 ### Tech Stack
 - **Frontend**: React 18 + TypeScript + Tailwind CSS + Vite
 - **Backend**: Node.js + Express + TypeScript
-- **Database**: PostgreSQL + Prisma ORM
+- **Database**: DynamoDB with V0 versioning system
 - **Authentication**: JWT-based authentication system
 - **UI Components**: Headless UI + Heroicons
 - **Document Generation**: PDF generation with legal templates (planned)
 - **E-Signatures**: DocuSign API integration (planned)
-- **Deployment**: Docker containerization
+- **Deployment**: Docker containerization + AWS Lambda ready
 
 ### Project Structure
 ```
@@ -34,12 +34,14 @@ letsdoprenup/
 │   ├── src/
 │   │   ├── routes/         # Express route handlers
 │   │   ├── middleware/     # Authentication & error handling
-│   │   ├── services/       # Business logic services
+│   │   ├── services/       # DynamoDB business logic services
 │   │   ├── utils/          # Utility functions
-│   │   └── server.ts       # Express app configuration
-│   ├── prisma/             # Database schema and migrations
+│   │   ├── types/          # TypeScript entity definitions
+│   │   ├── server.ts       # Express app configuration
+│   │   └── lambda.ts       # AWS Lambda handler
+│   ├── scripts/            # Database setup scripts
 │   └── dist/               # Compiled TypeScript
-├── docker-compose.yml       # Multi-service Docker setup
+├── docker-compose.yml       # Multi-service Docker setup with DynamoDB Local
 └── package.json            # Workspace configuration
 ```
 
@@ -48,22 +50,26 @@ letsdoprenup/
 ### Prerequisites
 - Node.js 18+ 
 - npm or yarn
-- Docker (optional but recommended)
-- PostgreSQL (if not using Docker)
+- Docker (recommended for DynamoDB Local)
+- AWS CLI (for production deployment)
 
-### Using Docker (Recommended)
+### Using Docker with DynamoDB Local (Recommended)
 ```bash
 # Clone the repository
 git clone <repository-url>
 cd letsdoprenup
 
-# Start all services
+# Start all services (includes DynamoDB Local)
 docker-compose up
+
+# Initialize DynamoDB tables (in separate terminal)
+cd backend
+npm run setup:tables
 
 # The application will be available at:
 # - Frontend: http://localhost:3000
 # - Backend API: http://localhost:3001
-# - Database: PostgreSQL on port 5432
+# - DynamoDB Local Admin: http://localhost:8000/shell
 ```
 
 ### Manual Setup
@@ -75,16 +81,153 @@ npm run install:all
 cp backend/.env.example backend/.env
 cp frontend/.env.example frontend/.env
 
-# Start PostgreSQL database
-# Update backend/.env with your database URL
+# Start DynamoDB Local
+npm run dynamodb:local
 
-# Run database migrations
+# In separate terminal, set up tables
 cd backend
-npx prisma migrate dev
-npx prisma generate
+npm run setup:tables
 
 # Start development servers
 npm run dev  # Starts both frontend and backend
+```
+
+## 🗄️ DynamoDB Configuration
+
+### Local Development Setup
+
+#### Environment Variables (backend/.env)
+```env
+# DynamoDB Configuration
+DYNAMODB_ENDPOINT=http://localhost:8000
+DYNAMODB_TABLE_NAME=letsdoprenup-data
+AWS_REGION=us-east-1
+AWS_ACCESS_KEY_ID=local
+AWS_SECRET_ACCESS_KEY=local
+
+# Application Configuration
+JWT_SECRET=your-super-secret-jwt-key
+NODE_ENV=development
+PORT=3001
+FRONTEND_URL=http://localhost:3000
+```
+
+#### Starting DynamoDB Local
+```bash
+# Option 1: Using npm script
+npm run dynamodb:local
+
+# Option 2: Using Docker directly
+docker run -p 8000:8000 amazon/dynamodb-local -jar DynamoDBLocal.jar -sharedDb -inMemory
+
+# Option 3: Using Docker Compose (includes all services)
+docker-compose up dynamodb-local
+```
+
+#### Setting Up Tables
+```bash
+# Create tables with proper GSIs
+cd backend
+npm run setup:tables
+
+# Verify table creation
+curl http://localhost:8000/shell  # Opens DynamoDB Local admin
+```
+
+### Single-Table Design
+
+The application uses a single DynamoDB table with the following structure:
+
+```
+Table: letsdoprenup-data
+
+Primary Key:
+- PK (Partition Key): EntityType#ID (e.g., "USER#123", "PRENUP#456")
+- SK (Sort Key): Version (e.g., "V0", "V1", "V2") where V0 = latest
+
+Global Secondary Indexes:
+- EntityTypeIndex: entityType (PK), SK (SK) - Query by entity type
+- EmailIndex: email (PK) - User lookup by email
+- CreatedByIndex: createdBy (PK), SK (SK) - User-owned entities
+- PrenupIndex: prenupId (PK), SK (SK) - Prenup-related entities
+```
+
+### Data Examples
+```json
+// User entity
+{
+  "PK": "USER#1704123456789-abc123",
+  "SK": "V0",
+  "id": "1704123456789-abc123",
+  "entityType": "USER",
+  "email": "user@example.com",
+  "firstName": "John",
+  "lastName": "Doe",
+  "role": "USER",
+  "createdAt": "2024-01-01T12:00:00.000Z",
+  "updatedAt": "2024-01-01T12:00:00.000Z",
+  "version": "V0"
+}
+
+// Prenup entity
+{
+  "PK": "PRENUP#1704123456790-def456",
+  "SK": "V0", 
+  "id": "1704123456790-def456",
+  "entityType": "PRENUP",
+  "title": "Our Prenup Agreement",
+  "state": "CALIFORNIA",
+  "status": "DRAFT",
+  "createdBy": "1704123456789-abc123",
+  "createdByEmail": "user@example.com",
+  "progress": { "currentStep": 1, "completedSteps": [] },
+  "content": {},
+  "createdAt": "2024-01-01T12:00:00.000Z",
+  "updatedAt": "2024-01-01T12:00:00.000Z",
+  "version": "V0"
+}
+```
+
+## 📊 Database Operations
+
+### Basic CRUD Examples
+
+#### Create User
+```javascript
+import { userService } from './services/userService';
+
+const user = await userService.createUser({
+  email: 'user@example.com',
+  password: 'securepassword',
+  firstName: 'John',
+  lastName: 'Doe'
+});
+```
+
+#### Get User with Versioning
+```javascript
+// Get latest version (V0)
+const user = await userService.getUserById('user-id');
+
+// Get specific version
+const oldUser = await dynamodbService.getById('USER', 'user-id', 'V1');
+```
+
+#### Update with Versioning
+```javascript
+// Creates new version and updates V0
+const updatedUser = await userService.updateUser('user-id', {
+  firstName: 'Jane'
+});
+```
+
+#### Query Operations
+```javascript
+// Get all prenups for a user
+const prenups = await prenupService.getPrenupsByUser('user-id');
+
+// Get financial summary
+const summary = await financialService.getFinancialSummary('prenup-id');
 ```
 
 ## 🎯 Core Features
@@ -92,9 +235,10 @@ npm run dev  # Starts both frontend and backend
 ### ✅ Implemented Features
 
 #### User Management & Authentication
-- Secure user registration and login
+- Secure user registration and login with DynamoDB
 - JWT-based authentication
 - Password hashing with bcrypt
+- V0 versioning system for user data changes
 - Protected routes and API endpoints
 
 #### State-Specific Legal Compliance
@@ -105,11 +249,12 @@ npm run dev  # Starts both frontend and backend
 - **Virginia**: Voluntariness emphasis, full disclosure requirements
 
 #### Prenup Management
-- Create and manage multiple prenup agreements
+- Create and manage multiple prenup agreements with versioning
 - State selection with specific legal requirements
 - Progress tracking with step-by-step completion
 - Partner collaboration workflow
 - Document status management
+- Version history tracking
 
 #### Financial Disclosure System
 - Comprehensive asset entry forms (real estate, vehicles, investments, etc.)
@@ -118,12 +263,15 @@ npm run dev  # Starts both frontend and backend
 - Automatic net worth calculations
 - Side-by-side financial comparisons
 - Timestamped, auditable disclosure reports
+- Version history for audit trails
 
 #### Document Management
 - File upload support for financial documents
 - Document categorization and organization
 - Download capabilities for all documents
-- Secure document storage
+- Secure document storage with validation
+- File type and size restrictions
+- Document version tracking
 
 #### User Interface
 - Responsive design for mobile and desktop
@@ -132,7 +280,7 @@ npm run dev  # Starts both frontend and backend
 - Legal disclaimers and compliance messaging
 - State-specific information and requirements
 
-### 🔄 In Progress Features
+### 📋 Planned Features
 
 #### Multi-Step Wizard Interface
 - Guided interview process with state-specific questions
@@ -146,60 +294,52 @@ npm run dev  # Starts both frontend and backend
 - Custom clause selection and modification
 - Document preview and review system
 
-### 📋 Planned Features
-
 #### E-Signature Integration
 - DocuSign API integration for electronic signatures
 - Remote online notarization support
 - Identity verification workflows
 - Compliance logging and audit trails
 
-#### Advanced Features
-- Real-time partner collaboration
-- Financial calculators and planning tools
-- Attorney review marketplace integration
-- Document versioning and revision tracking
-- Advanced reporting and analytics
+## ⚡ AWS Lambda Deployment
 
-## 🏛️ Legal Compliance
+The application is ready for serverless deployment to AWS Lambda.
 
-### State-Specific Requirements
+### Lambda Handler
+```javascript
+// backend/src/lambda.ts exports the main handler
+export const handler = (event, context) => {
+  return proxy(server, event, context, 'PROMISE').promise;
+};
+```
 
-#### California
-- **Waiting Period**: 7 days between execution and marriage
-- **Disclosure**: Complete financial disclosure required
-- **Standards**: Court examines fairness at enforcement
-- **Special Rules**: Agreements signed <7 days before marriage are voidable
+### Build for Lambda
+```bash
+cd backend
 
-#### Washington  
-- **Property Type**: Community property state
-- **Disclosure**: Complete and accurate disclosure of all assets/debts
-- **Standards**: Must be fair and reasonable when made
-- **Requirements**: Voluntary execution essential
+# Build Lambda-ready package
+npm run build:lambda
 
-#### New York
-- **Notarization**: Agreement must be notarized or acknowledged
-- **Standards**: Fair and reasonable at both execution and enforcement
-- **Disclosure**: Fair disclosure of assets and financial obligations
-- **Maintenance**: Cannot completely waive without strict requirements
+# Create deployment zip
+npm run package:lambda
+```
 
-#### Washington D.C.
-- **Framework**: Follows Uniform Premarital Agreement Act (UPAA)
-- **Disclosure**: Adequate disclosure of assets and obligations required
-- **Standards**: Agreement unconscionable if lacking disclosure
-- **Limitations**: Cannot adversely affect child support
+### Environment Variables for Production
+```env
+NODE_ENV=lambda
+DYNAMODB_TABLE_NAME=letsdoprenup-prod
+AWS_REGION=us-east-1
+JWT_SECRET=your-production-jwt-secret
+FRONTEND_URL=https://your-frontend-domain.com
+```
 
-#### Virginia
-- **Emphasis**: Strong focus on voluntariness and full disclosure
-- **Standards**: Agreement must not be unconscionable
-- **Requirements**: Complete disclosure of assets, debts, and income
-- **Limitations**: Cannot adversely affect child support obligations
+### DynamoDB Production Setup
+```bash
+# Create production table
+aws dynamodb create-table --cli-input-json file://table-config.json
 
-### Important Legal Disclaimers
-- This platform provides document preparation services, not legal advice
-- Both parties should have adequate time to review agreements
-- Independent legal representation is recommended for complex situations
-- Full financial disclosure is required in all supported states
+# Set up GSIs
+aws dynamodb update-table --table-name letsdoprenup-prod --cli-input-json file://gsi-config.json
+```
 
 ## 🔧 Development
 
@@ -215,14 +355,19 @@ npm run dev
 # Build for production
 npm run build
 
+# Build for Lambda deployment
+npm run build:lambda
+
 # Run tests
 npm run test
 
 # Backend specific
 cd backend
-npm run dev          # Start development server
-npm run build        # Compile TypeScript
-npm run prisma:studio # Open database GUI
+npm run dev              # Start development server
+npm run build            # Compile TypeScript
+npm run start:lambda     # Start in Lambda mode
+npm run dynamodb:local   # Start DynamoDB Local
+npm run setup:tables     # Initialize tables
 
 # Frontend specific  
 cd frontend
@@ -231,76 +376,110 @@ npm run build        # Build for production
 npm run preview      # Preview production build
 ```
 
-### Database Management
+### DynamoDB Management
 
 ```bash
-# Generate Prisma client
-npx prisma generate
+# Start DynamoDB Local
+npm run dynamodb:local
 
-# Create and apply migrations
-npx prisma migrate dev
+# Set up tables with GSIs
+npm run setup:tables
 
-# Reset database
-npx prisma migrate reset
+# Access DynamoDB Local admin interface
+open http://localhost:8000/shell
 
-# Open Prisma Studio
-npx prisma studio
+# Query data directly
+aws dynamodb scan --table-name letsdoprenup-data --endpoint-url http://localhost:8000
 ```
 
-### Environment Variables
+## 🗄️ Migration from PostgreSQL/Prisma
 
-#### Backend (.env)
-```env
-DATABASE_URL="postgresql://user:password@localhost:5432/letsdoprenup"
-JWT_SECRET="your-super-secret-jwt-key"
-NODE_ENV="development"
-PORT=3001
+### Key Changes Made
+
+1. **Database Layer**: Complete replacement of Prisma/PostgreSQL with DynamoDB
+2. **Versioning System**: Implemented V0 versioning for all entities
+3. **Single Table Design**: All data stored in one table with composite keys
+4. **Service Layer**: Created comprehensive service classes for each entity type
+5. **Lambda Ready**: All handlers are stateless and Lambda-compatible
+
+### Data Migration Strategy
+
+#### User Versioning
+- Latest data always stored with `SK = "V0"`
+- Historical versions stored as `V1`, `V2`, etc.
+- Automatic version creation on updates
+
+#### Denormalization
+- Strategic denormalization for performance (emails in prenups, names in references)
+- Reduced need for complex joins
+- Improved query performance
+
+#### Access Patterns
+- Optimized for application query patterns
+- GSIs for efficient lookups by email, entity type, relationships
+- Batch operations for related data
+
+### Migration Notes
+
+#### Before Migration (Prisma)
+```javascript
+const user = await prisma.user.findUnique({
+  where: { email },
+  include: { createdPrenups: true }
+});
 ```
 
-#### Frontend (.env)
-```env
-VITE_API_URL="http://localhost:3001/api"
+#### After Migration (DynamoDB)
+```javascript
+const user = await userService.getUserByEmail(email);
+const prenups = await prenupService.getPrenupsByUser(user.id);
 ```
-
-## 📊 Database Schema
-
-The application uses PostgreSQL with Prisma ORM. Key entities include:
-
-- **Users**: Authentication and profile information
-- **Prenups**: Agreement metadata and progress tracking
-- **FinancialDisclosures**: Asset, debt, and income information
-- **Documents**: File attachments and supporting documentation
-- **Signatures**: Electronic signature tracking
-- **PartnerInvitations**: Collaboration workflow management
 
 ## 🛡️ Security Features
 
 - Password hashing with bcrypt (12 rounds)
-- JWT token authentication
+- JWT token authentication with configurable expiration
 - CORS protection
 - Rate limiting on API endpoints
 - Input validation with Joi
-- SQL injection protection via Prisma
-- Secure file upload handling
+- File upload restrictions and validation
+- Access control for all operations
+- Version history for audit trails
 
 ## 🚢 Deployment
 
 ### Docker Deployment
 ```bash
-# Build and start all services
+# Build and start all services with DynamoDB Local
 docker-compose up --build
 
-# Production mode
-docker-compose -f docker-compose.prod.yml up
+# Initialize tables
+docker-compose exec backend npm run setup:tables
 ```
 
-### Manual Deployment
-1. Build both frontend and backend
-2. Configure production environment variables
-3. Set up PostgreSQL database
-4. Run database migrations
-5. Deploy backend to your server
-6. Deploy frontend to CDN/static hosting
+### AWS Lambda Deployment
+```bash
+# Build for Lambda
+npm run build:lambda
+
+# Package for deployment
+npm run package:lambda
+
+# Deploy using AWS CLI, SAM, or Serverless Framework
+aws lambda update-function-code --function-name letsdoprenup-api --zip-file fileb://lambda-deployment.zip
+```
+
+### Environment Setup
+
+#### Development
+- Uses DynamoDB Local on port 8000
+- File storage in local filesystem
+- Basic rate limiting
+
+#### Production  
+- Uses AWS DynamoDB
+- File storage in S3 (recommended)
+- Enhanced rate limiting and monitoring
 
 ## 🤝 Contributing
 
@@ -323,3 +502,14 @@ For support and questions:
 ---
 
 **⚖️ Legal Notice**: This platform provides document preparation services and legal information but does not provide legal advice. We recommend consulting with a qualified attorney for legal guidance specific to your situation.
+
+## 🔄 Version History
+
+### v2.0.0 - DynamoDB Migration
+- ✅ Complete migration from PostgreSQL/Prisma to DynamoDB
+- ✅ Implemented V0 versioning system
+- ✅ Lambda-ready architecture
+- ✅ Single-table design with optimized access patterns
+- ✅ Enhanced security and validation
+- ✅ Docker setup with DynamoDB Local
+- ✅ Comprehensive service layer architecture

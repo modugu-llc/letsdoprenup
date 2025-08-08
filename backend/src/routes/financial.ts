@@ -1,11 +1,13 @@
 import express from 'express';
-import { PrismaClient } from '@prisma/client';
 import Joi from 'joi';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { createError, asyncHandler } from '../middleware/errorHandler';
+import { financialService } from '../services/financialService';
+import { prenupService } from '../services/prenupService';
+import { Asset, Debt, Income } from '../types/entities';
+import { Handler } from 'aws-lambda';
 
 const router = express.Router();
-const prisma = new PrismaClient();
 
 // Validation schemas
 const assetSchema = Joi.object({
@@ -47,42 +49,26 @@ router.get('/:prenupId', authenticate, asyncHandler(async (req: AuthRequest, res
   const { prenupId } = req.params;
 
   // Verify user has access to this prenup
-  const prenup = await prisma.prenup.findFirst({
-    where: {
-      id: prenupId,
-      OR: [
-        { createdBy: req.user!.id },
-        { partnerId: req.user!.id }
-      ]
-    }
-  });
-
-  if (!prenup) {
+  const hasAccess = await prenupService.userHasAccessToPrenup(prenupId, req.user!.id);
+  if (!hasAccess) {
     throw createError('Prenup not found', 404);
   }
 
   // Get financial disclosure for current user
-  const disclosure = await prisma.financialDisclosure.findFirst({
-    where: {
-      prenupId,
-      userId: req.user!.id
-    }
-  });
+  const disclosure = await financialService.getFinancialDisclosureByPrenupAndUser(
+    prenupId,
+    req.user!.id
+  );
 
   // Get partner's disclosure if user is creator
+  const prenup = await prenupService.getPrenupById(prenupId);
   let partnerDisclosure = null;
-  if (prenup.partnerId && prenup.createdBy === req.user!.id) {
-    partnerDisclosure = await prisma.financialDisclosure.findFirst({
-      where: {
-        prenupId,
-        userId: prenup.partnerId
-      },
-      include: {
-        user: {
-          select: { id: true, firstName: true, lastName: true, email: true }
-        }
-      }
-    });
+  
+  if (prenup?.partnerId && prenup.createdBy === req.user!.id) {
+    partnerDisclosure = await financialService.getFinancialDisclosureByPrenupAndUser(
+      prenupId,
+      prenup.partnerId
+    );
   }
 
   res.json({
@@ -90,7 +76,7 @@ router.get('/:prenupId', authenticate, asyncHandler(async (req: AuthRequest, res
     data: { 
       disclosure,
       partnerDisclosure,
-      canViewPartner: prenup.createdBy === req.user!.id
+      canViewPartner: prenup?.createdBy === req.user!.id
     }
   });
 }));
@@ -104,55 +90,26 @@ router.post('/', authenticate, asyncHandler(async (req: AuthRequest, res: expres
 
   const { prenupId, assets, debts, income } = value;
 
-  // Verify user has access to this prenup
-  const prenup = await prisma.prenup.findFirst({
-    where: {
-      id: prenupId,
-      OR: [
-        { createdBy: req.user!.id },
-        { partnerId: req.user!.id }
-      ]
-    }
-  });
-
-  if (!prenup) {
-    throw createError('Prenup not found', 404);
-  }
-
-  // Calculate net worth
-  const totalAssets = assets.reduce((sum: number, asset: any) => sum + asset.value, 0);
-  const totalDebts = debts.reduce((sum: number, debt: any) => sum + debt.amount, 0);
-  const netWorth = totalAssets - totalDebts;
-
-  // Upsert financial disclosure
-  const disclosure = await prisma.financialDisclosure.upsert({
-    where: {
-      prenupId_userId: {
-        prenupId,
-        userId: req.user!.id
-      }
-    },
-    update: {
-      assets,
-      debts,
-      income,
-      netWorth
-    },
-    create: {
+  try {
+    const disclosure = await financialService.createOrUpdateFinancialDisclosure({
       prenupId,
       userId: req.user!.id,
-      assets,
-      debts,
-      income,
-      netWorth
-    }
-  });
+      assets: assets as Asset[],
+      debts: debts as Debt[],
+      income: income as Income
+    });
 
-  res.json({
-    success: true,
-    data: { disclosure },
-    message: 'Financial disclosure saved successfully'
-  });
+    res.json({
+      success: true,
+      data: { disclosure },
+      message: 'Financial disclosure saved successfully'
+    });
+  } catch (error: any) {
+    if (error.message === 'Access denied to prenup') {
+      throw createError('Prenup not found', 404);
+    }
+    throw error;
+  }
 }));
 
 // Get financial summary for comparison
@@ -160,60 +117,17 @@ router.get('/:prenupId/summary', authenticate, asyncHandler(async (req: AuthRequ
   const { prenupId } = req.params;
 
   // Verify user has access to this prenup
-  const prenup = await prisma.prenup.findFirst({
-    where: {
-      id: prenupId,
-      OR: [
-        { createdBy: req.user!.id },
-        { partnerId: req.user!.id }
-      ]
-    },
-    include: {
-      creator: {
-        select: { id: true, firstName: true, lastName: true }
-      },
-      partner: {
-        select: { id: true, firstName: true, lastName: true }
-      }
-    }
-  });
+  const hasAccess = await prenupService.userHasAccessToPrenup(prenupId, req.user!.id);
+  if (!hasAccess) {
+    throw createError('Prenup not found', 404);
+  }
 
+  const prenup = await prenupService.getPrenupWithUsers(prenupId);
   if (!prenup) {
     throw createError('Prenup not found', 404);
   }
 
-  // Get all financial disclosures for this prenup
-  const disclosures = await prisma.financialDisclosure.findMany({
-    where: { prenupId },
-    include: {
-      user: {
-        select: { id: true, firstName: true, lastName: true, email: true }
-      }
-    }
-  });
-
-  // Calculate combined financial summary
-  const summary = {
-    individual: disclosures.map(disclosure => ({
-      user: disclosure.user,
-      netWorth: disclosure.netWorth,
-      totalAssets: (disclosure.assets as any[]).reduce((sum, asset) => sum + asset.value, 0),
-      totalDebts: (disclosure.debts as any[]).reduce((sum, debt) => sum + debt.amount, 0),
-      annualIncome: Object.values(disclosure.income as any).reduce((sum: number, value: any) => sum + (typeof value === 'number' ? value : 0), 0)
-    })),
-    combined: {
-      totalNetWorth: disclosures.reduce((sum, d) => sum + Number(d.netWorth), 0),
-      totalAssets: disclosures.reduce((sum, d) => {
-        return sum + (d.assets as any[]).reduce((assetSum, asset) => assetSum + asset.value, 0);
-      }, 0),
-      totalDebts: disclosures.reduce((sum, d) => {
-        return sum + (d.debts as any[]).reduce((debtSum, debt) => debtSum + debt.amount, 0);
-      }, 0),
-      combinedIncome: disclosures.reduce((sum, d) => {
-        return sum + Object.values(d.income as any).reduce((incomeSum: number, value: any) => incomeSum + (typeof value === 'number' ? value : 0), 0);
-      }, 0)
-    }
-  };
+  const summary = await financialService.getFinancialSummary(prenupId);
 
   res.json({
     success: true,
@@ -226,55 +140,12 @@ router.get('/:prenupId/report', authenticate, asyncHandler(async (req: AuthReque
   const { prenupId } = req.params;
 
   // Verify user has access to this prenup
-  const prenup = await prisma.prenup.findFirst({
-    where: {
-      id: prenupId,
-      OR: [
-        { createdBy: req.user!.id },
-        { partnerId: req.user!.id }
-      ]
-    },
-    include: {
-      creator: {
-        select: { id: true, firstName: true, lastName: true, email: true }
-      },
-      partner: {
-        select: { id: true, firstName: true, lastName: true, email: true }
-      }
-    }
-  });
-
-  if (!prenup) {
+  const hasAccess = await prenupService.userHasAccessToPrenup(prenupId, req.user!.id);
+  if (!hasAccess) {
     throw createError('Prenup not found', 404);
   }
 
-  // Get all financial disclosures
-  const disclosures = await prisma.financialDisclosure.findMany({
-    where: { prenupId },
-    include: {
-      user: {
-        select: { id: true, firstName: true, lastName: true, email: true }
-      }
-    },
-    orderBy: { createdAt: 'asc' }
-  });
-
-  // Generate timestamped report
-  const report = {
-    prenupId,
-    prenupTitle: prenup.title,
-    state: prenup.state,
-    generatedAt: new Date().toISOString(),
-    disclosures: disclosures.map(disclosure => ({
-      user: disclosure.user,
-      submittedAt: disclosure.createdAt.toISOString(),
-      lastUpdated: disclosure.updatedAt.toISOString(),
-      netWorth: disclosure.netWorth,
-      assets: disclosure.assets,
-      debts: disclosure.debts,
-      income: disclosure.income
-    }))
-  };
+  const report = await financialService.generateFinancialReport(prenupId);
 
   res.json({
     success: true,
@@ -282,5 +153,91 @@ router.get('/:prenupId/report', authenticate, asyncHandler(async (req: AuthReque
     message: 'Financial disclosure report generated'
   });
 }));
+
+// Lambda-compatible handlers
+export const getFinancialDisclosureHandler: Handler = async (event, context) => {
+  try {
+    // Extract user info from JWT (placeholder)
+    const userId = 'user-from-jwt';
+    const prenupId = event.pathParameters?.prenupId;
+
+    if (!prenupId) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({
+          success: false,
+          error: 'Prenup ID required'
+        })
+      };
+    }
+
+    const disclosure = await financialService.getFinancialDisclosureByPrenupAndUser(
+      prenupId,
+      userId
+    );
+
+    return {
+      statusCode: 200,
+      body: JSON.stringify({
+        success: true,
+        data: { disclosure }
+      })
+    };
+  } catch (error: any) {
+    return {
+      statusCode: 500,
+      body: JSON.stringify({
+        success: false,
+        error: error.message
+      })
+    };
+  }
+};
+
+export const saveFinancialDisclosureHandler: Handler = async (event, context) => {
+  try {
+    const body = JSON.parse(event.body || '{}');
+    const { error, value } = financialDisclosureSchema.validate(body);
+    
+    if (error) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({
+          success: false,
+          error: error.details[0].message
+        })
+      };
+    }
+
+    // Extract user info from JWT (placeholder)
+    const userId = 'user-from-jwt';
+    const { prenupId, assets, debts, income } = value;
+
+    const disclosure = await financialService.createOrUpdateFinancialDisclosure({
+      prenupId,
+      userId,
+      assets: assets as Asset[],
+      debts: debts as Debt[],
+      income: income as Income
+    });
+
+    return {
+      statusCode: 200,
+      body: JSON.stringify({
+        success: true,
+        data: { disclosure },
+        message: 'Financial disclosure saved successfully'
+      })
+    };
+  } catch (error: any) {
+    return {
+      statusCode: 500,
+      body: JSON.stringify({
+        success: false,
+        error: error.message
+      })
+    };
+  }
+};
 
 export default router;
