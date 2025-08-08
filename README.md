@@ -66,6 +66,13 @@ docker-compose up
 # - Database: PostgreSQL on port 5432
 ```
 
+**Note**: The backend container now automatically:
+1. Generates the Prisma client (`npx prisma generate`)
+2. Applies database migrations (`npx prisma migrate deploy`) 
+3. Starts the application (`npm start`)
+
+This ensures the database schema and Prisma client are always up-to-date when the container starts, eliminating common setup issues.
+
 ### Manual Setup
 ```bash
 # Install dependencies
@@ -293,6 +300,24 @@ docker-compose up --build
 # Production mode
 docker-compose -f docker-compose.prod.yml up
 ```
+
+#### Automated Database Setup
+The backend Docker container includes automated setup that runs on every container start:
+
+1. **Prisma Client Generation**: Ensures the Prisma client is always generated with the latest schema
+2. **Database Migrations**: Automatically applies pending database migrations
+3. **Application Startup**: Only starts the application after database setup is complete
+
+This automation is handled by the `docker-entrypoint.sh` script, which:
+- Runs `npx prisma generate` to generate the Prisma client
+- Runs `npx prisma migrate deploy` to apply database migrations  
+- Executes `npm start` to launch the application
+
+This approach ensures:
+- ✅ Database schema is always up-to-date
+- ✅ Prisma client is properly generated
+- ✅ No manual intervention needed for database setup
+- ✅ Safer CI/CD deployments and developer onboarding
 
 ### Manual Deployment
 1. Build both frontend and backend
