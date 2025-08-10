@@ -1,10 +1,32 @@
-# Let's Do Prenup - DynamoDB Migration
+# Let's Do Prenup - Enhanced Platform
 
-A comprehensive online platform for creating legally enforceable prenuptial and postnuptial agreements across key U.S. jurisdictions (California, Washington, New York, Washington D.C., and Virginia).
+A comprehensive online platform for creating legally enforceable prenuptial and postnuptial agreements across key U.S. jurisdictions (California, Washington, New York, Washington D.C., and Virginia) with AI-powered analysis and state-specific compliance.
 
 ## 🎯 Overview
 
-Let's Do Prenup is a guided, state-specific platform that helps couples create legally compliant prenuptial agreements. The platform ensures proper legal requirements are met while providing an intuitive user experience for complex legal processes.
+Let's Do Prenup is a guided, state-specific platform that helps couples create legally compliant prenuptial agreements with confidence. The platform ensures proper legal requirements are met while providing an intuitive user experience for complex legal processes, featuring AI-powered analysis and personalized recommendations.
+
+## 🚀 Key Features
+
+### ✅ Enhanced User Experience
+- **5-Step Guided Process**: State selection → Requirements review → Questionnaire → AI Analysis → Notarization options
+- **AI-Powered Analysis**: Confidential analysis of prenup complexity with attorney review recommendations
+- **State-Specific Compliance**: Automatic enforcement of state-specific legal requirements
+- **Modern UI/UX**: Beautiful, responsive design with intuitive navigation
+
+### ✅ Legal Compliance
+- **California**: 7-day waiting period, fairness testing, full disclosure
+- **Washington**: Community property rules, comprehensive disclosure
+- **New York**: Mandatory notarization, fair and reasonable standards
+- **Washington D.C.**: UPAA compliance, disclosure requirements
+- **Virginia**: Voluntariness emphasis, full disclosure requirements
+
+### ✅ Technical Features
+- **React 18 + TypeScript**: Modern frontend with type safety
+- **Node.js + Express**: Robust backend API
+- **DynamoDB**: Scalable single-table design with V0 versioning
+- **AWS Lambda Ready**: Serverless deployment architecture
+- **Docker Support**: Containerized development environment
 
 ## 🏗️ Architecture
 
@@ -14,8 +36,7 @@ Let's Do Prenup is a guided, state-specific platform that helps couples create l
 - **Database**: DynamoDB with V0 versioning system
 - **Authentication**: JWT-based authentication system
 - **UI Components**: Headless UI + Heroicons
-- **Document Generation**: PDF generation with legal templates (planned)
-- **E-Signatures**: DocuSign API integration (planned)
+- **AI Analysis**: Custom AI-powered recommendation engine
 - **Deployment**: Docker containerization + AWS Lambda ready
 
 ### Project Structure
@@ -24,7 +45,7 @@ letsdoprenup/
 ├── frontend/                 # React application
 │   ├── src/
 │   │   ├── components/      # Reusable UI components
-│   │   ├── pages/          # Application pages
+│   │   ├── pages/          # Application pages (HomePage, Wizard, etc.)
 │   │   ├── hooks/          # Custom React hooks
 │   │   ├── services/       # API services
 │   │   ├── types/          # TypeScript type definitions
@@ -45,51 +66,105 @@ letsdoprenup/
 └── package.json            # Workspace configuration
 ```
 
-## 🚀 Quick Start
+## 🚀 Quick Start - Local Development
 
 ### Prerequisites
 - Node.js 18+ 
 - npm or yarn
-- Docker (recommended for DynamoDB Local)
+- Docker (for DynamoDB Local)
 - AWS CLI (for production deployment)
 
-### Using Docker with DynamoDB Local (Recommended)
+### Step 1: Clone and Install Dependencies
 ```bash
 # Clone the repository
 git clone <repository-url>
 cd letsdoprenup
 
-# Start all services (includes DynamoDB Local)
-docker-compose up
-
-# Initialize DynamoDB tables (in separate terminal)
-cd backend
-npm run setup:tables
-
-# The application will be available at:
-# - Frontend: http://localhost:3000
-# - Backend API: http://localhost:3001
-# - DynamoDB Local Admin: http://localhost:8000/shell
+# Install all dependencies (frontend, backend, and workspace)
+npm run install:all
 ```
 
-### Manual Setup
+### Step 2: Start DynamoDB Local
 ```bash
-# Install dependencies
-npm run install:all
+# Start DynamoDB Local using Docker
+docker run -d -p 8000:8000 --name dynamodb-local amazon/dynamodb-local -jar DynamoDBLocal.jar -sharedDb -inMemory
 
-# Set up environment variables
-cp backend/.env.example backend/.env
-cp frontend/.env.example frontend/.env
+# Verify DynamoDB is running
+curl http://localhost:8000/shell
+```
 
-# Start DynamoDB Local
-npm run dynamodb:local
-
-# In separate terminal, set up tables
+### Step 3: Set Up Database Tables
+```bash
+# Navigate to backend and set up tables
 cd backend
 npm run setup:tables
+```
 
-# Start development servers
-npm run dev  # Starts both frontend and backend
+### Step 4: Start Development Servers
+```bash
+# Return to root directory
+cd ..
+
+# Start both frontend and backend in development mode
+npm run dev
+```
+
+### Step 5: Access the Application
+- **Frontend**: http://localhost:3000
+- **Backend API**: http://localhost:3001
+- **DynamoDB Local Admin**: http://localhost:8000/shell
+- **Health Check**: http://localhost:3001/health
+
+## 🧪 Testing the Application
+
+### 1. Homepage Testing
+1. Open http://localhost:3000
+2. Verify the enhanced homepage with:
+   - "Build Your Prenup With Confidence" messaging
+   - 5-step process overview
+   - State-specific compliance information
+   - AI-powered analysis features
+
+### 2. User Registration and Login
+1. Click "Start Your Prenup" or "Sign In"
+2. Register a new account with email and password
+3. Verify successful login and redirect to dashboard
+
+### 3. Prenup Creation Flow
+1. From dashboard, click "Create New Prenup"
+2. Enter basic information (title, partner name)
+3. Click "Start Wizard" to begin the 5-step process
+
+### 4. 5-Step Wizard Testing
+1. **Step 1 - State Selection**: Choose a state (e.g., California)
+2. **Step 2 - Requirements**: Review state-specific legal requirements
+3. **Step 3 - Questionnaire**: Fill out the comprehensive questionnaire
+4. **Step 4 - AI Analysis**: View AI-powered recommendations
+5. **Step 5 - Notarization Options**: Choose notarization and attorney review options
+
+### 5. API Testing
+```bash
+# Test health endpoint
+curl http://localhost:3001/health
+
+# Test user registration (replace with actual data)
+curl -X POST http://localhost:3001/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","password":"password123","firstName":"John","lastName":"Doe"}'
+
+# Test login
+curl -X POST http://localhost:3001/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","password":"password123"}'
+```
+
+### 6. Database Verification
+```bash
+# View DynamoDB tables
+aws dynamodb list-tables --endpoint-url http://localhost:8000
+
+# Scan the main table
+aws dynamodb scan --table-name letsdoprenup-data --endpoint-url http://localhost:8000
 ```
 
 ## 🗄️ DynamoDB Configuration
@@ -114,14 +189,14 @@ FRONTEND_URL=http://localhost:3000
 
 #### Starting DynamoDB Local
 ```bash
-# Option 1: Using npm script
-npm run dynamodb:local
+# Option 1: Using Docker directly
+docker run -d -p 8000:8000 --name dynamodb-local amazon/dynamodb-local -jar DynamoDBLocal.jar -sharedDb -inMemory
 
-# Option 2: Using Docker directly
-docker run -p 8000:8000 amazon/dynamodb-local -jar DynamoDBLocal.jar -sharedDb -inMemory
-
-# Option 3: Using Docker Compose (includes all services)
+# Option 2: Using Docker Compose (includes all services)
 docker-compose up dynamodb-local
+
+# Option 3: Using npm script (if available)
+npm run dynamodb:local
 ```
 
 #### Setting Up Tables
@@ -152,179 +227,84 @@ Global Secondary Indexes:
 - PrenupIndex: prenupId (PK), SK (SK) - Prenup-related entities
 ```
 
-### Data Examples
-```json
-// User entity
-{
-  "PK": "USER#1704123456789-abc123",
-  "SK": "V0",
-  "id": "1704123456789-abc123",
-  "entityType": "USER",
-  "email": "user@example.com",
-  "firstName": "John",
-  "lastName": "Doe",
-  "role": "USER",
-  "createdAt": "2024-01-01T12:00:00.000Z",
-  "updatedAt": "2024-01-01T12:00:00.000Z",
-  "version": "V0"
-}
+## 🚢 AWS Deployment
 
-// Prenup entity
-{
-  "PK": "PRENUP#1704123456790-def456",
-  "SK": "V0", 
-  "id": "1704123456790-def456",
-  "entityType": "PRENUP",
-  "title": "Our Prenup Agreement",
-  "state": "CALIFORNIA",
-  "status": "DRAFT",
-  "createdBy": "1704123456789-abc123",
-  "createdByEmail": "user@example.com",
-  "progress": { "currentStep": 1, "completedSteps": [] },
-  "content": {},
-  "createdAt": "2024-01-01T12:00:00.000Z",
-  "updatedAt": "2024-01-01T12:00:00.000Z",
-  "version": "V0"
-}
-```
+### Prerequisites for AWS Deployment
+1. AWS CLI configured with appropriate credentials
+2. AWS SAM CLI installed (for Lambda deployment)
+3. S3 bucket for deployment artifacts
+4. DynamoDB table created in AWS
 
-## 📊 Database Operations
-
-### Basic CRUD Examples
-
-#### Create User
-```javascript
-import { userService } from './services/userService';
-
-const user = await userService.createUser({
-  email: 'user@example.com',
-  password: 'securepassword',
-  firstName: 'John',
-  lastName: 'Doe'
-});
-```
-
-#### Get User with Versioning
-```javascript
-// Get latest version (V0)
-const user = await userService.getUserById('user-id');
-
-// Get specific version
-const oldUser = await dynamodbService.getById('USER', 'user-id', 'V1');
-```
-
-#### Update with Versioning
-```javascript
-// Creates new version and updates V0
-const updatedUser = await userService.updateUser('user-id', {
-  firstName: 'Jane'
-});
-```
-
-#### Query Operations
-```javascript
-// Get all prenups for a user
-const prenups = await prenupService.getPrenupsByUser('user-id');
-
-// Get financial summary
-const summary = await financialService.getFinancialSummary('prenup-id');
-```
-
-## 🎯 Core Features
-
-### ✅ Implemented Features
-
-#### User Management & Authentication
-- Secure user registration and login with DynamoDB
-- JWT-based authentication
-- Password hashing with bcrypt
-- V0 versioning system for user data changes
-- Protected routes and API endpoints
-
-#### State-Specific Legal Compliance
-- **California**: 7-day waiting period, fairness testing, full disclosure
-- **Washington**: Community property rules, comprehensive disclosure
-- **New York**: Mandatory notarization, fair and reasonable standards
-- **Washington D.C.**: UPAA compliance, disclosure requirements
-- **Virginia**: Voluntariness emphasis, full disclosure requirements
-
-#### Prenup Management
-- Create and manage multiple prenup agreements with versioning
-- State selection with specific legal requirements
-- Progress tracking with step-by-step completion
-- Partner collaboration workflow
-- Document status management
-- Version history tracking
-
-#### Financial Disclosure System
-- Comprehensive asset entry forms (real estate, vehicles, investments, etc.)
-- Debt tracking (mortgages, student loans, credit cards, etc.)
-- Income documentation with multiple sources
-- Automatic net worth calculations
-- Side-by-side financial comparisons
-- Timestamped, auditable disclosure reports
-- Version history for audit trails
-
-#### Document Management
-- File upload support for financial documents
-- Document categorization and organization
-- Download capabilities for all documents
-- Secure document storage with validation
-- File type and size restrictions
-- Document version tracking
-
-#### User Interface
-- Responsive design for mobile and desktop
-- Modern, accessible UI with Tailwind CSS
-- Progress indicators and step-by-step guidance
-- Legal disclaimers and compliance messaging
-- State-specific information and requirements
-
-### 📋 Planned Features
-
-#### Multi-Step Wizard Interface
-- Guided interview process with state-specific questions
-- Dynamic form validation based on state requirements
-- Real-time progress saving
-- Step navigation with completion tracking
-
-#### Document Generation
-- PDF generation with legal templates
-- State-specific document formatting
-- Custom clause selection and modification
-- Document preview and review system
-
-#### E-Signature Integration
-- DocuSign API integration for electronic signatures
-- Remote online notarization support
-- Identity verification workflows
-- Compliance logging and audit trails
-
-## ⚡ AWS Lambda Deployment
-
-The application is ready for serverless deployment to AWS Lambda.
-
-### Lambda Handler
-```javascript
-// backend/src/lambda.ts exports the main handler
-export const handler = (event, context) => {
-  return proxy(server, event, context, 'PROMISE').promise;
-};
-```
-
-### Build for Lambda
+### Step 1: Prepare for Production
 ```bash
-cd backend
+# Build the application for production
+npm run build
 
 # Build Lambda-ready package
+cd backend
 npm run build:lambda
-
-# Create deployment zip
-npm run package:lambda
 ```
 
-### Environment Variables for Production
+### Step 2: Create DynamoDB Table in AWS
+```bash
+# Create the production table
+aws dynamodb create-table \
+  --table-name letsdoprenup-prod \
+  --attribute-definitions \
+    AttributeName=PK,AttributeType=S \
+    AttributeName=SK,AttributeType=S \
+    AttributeName=entityType,AttributeType=S \
+    AttributeName=email,AttributeType=S \
+    AttributeName=createdBy,AttributeType=S \
+    AttributeName=prenupId,AttributeType=S \
+  --key-schema \
+    AttributeName=PK,KeyType=HASH \
+    AttributeName=SK,KeyType=RANGE \
+  --billing-mode PAY_PER_REQUEST \
+  --global-secondary-indexes \
+    IndexName=EntityTypeIndex,KeySchema=[{AttributeName=entityType,KeyType=HASH},{AttributeName=SK,KeyType=RANGE}],Projection={ProjectionType=ALL} \
+    IndexName=EmailIndex,KeySchema=[{AttributeName=email,KeyType=HASH}],Projection={ProjectionType=ALL} \
+    IndexName=CreatedByIndex,KeySchema=[{AttributeName=createdBy,KeyType=HASH},{AttributeName=SK,KeyType=RANGE}],Projection={ProjectionType=ALL} \
+    IndexName=PrenupIndex,KeySchema=[{AttributeName=prenupId,KeyType=HASH},{AttributeName=SK,KeyType=RANGE}],Projection={ProjectionType=ALL}
+```
+
+### Step 3: Deploy Backend to AWS Lambda
+```bash
+# Package Lambda function
+cd backend
+npm run package:lambda
+
+# Deploy using AWS CLI
+aws lambda create-function \
+  --function-name letsdoprenup-api \
+  --runtime nodejs18.x \
+  --role arn:aws:iam::YOUR_ACCOUNT:role/lambda-execution-role \
+  --handler dist/lambda.handler \
+  --zip-file fileb://lambda-deployment.zip \
+  --environment Variables='{NODE_ENV=lambda,DYNAMODB_TABLE_NAME=letsdoprenup-prod,AWS_REGION=us-east-1}'
+
+# Or deploy using SAM
+sam build
+sam deploy --guided
+```
+
+### Step 4: Deploy Frontend to S3 + CloudFront
+```bash
+# Build frontend for production
+cd frontend
+npm run build
+
+# Sync to S3 bucket
+aws s3 sync dist/ s3://your-frontend-bucket --delete
+
+# Create CloudFront distribution (via AWS Console or CLI)
+aws cloudfront create-distribution \
+  --distribution-config file://cloudfront-config.json
+```
+
+### Step 5: Environment Configuration
 ```env
+# Production Environment Variables
 NODE_ENV=lambda
 DYNAMODB_TABLE_NAME=letsdoprenup-prod
 AWS_REGION=us-east-1
@@ -332,16 +312,7 @@ JWT_SECRET=your-production-jwt-secret
 FRONTEND_URL=https://your-frontend-domain.com
 ```
 
-### DynamoDB Production Setup
-```bash
-# Create production table
-aws dynamodb create-table --cli-input-json file://table-config.json
-
-# Set up GSIs
-aws dynamodb update-table --table-name letsdoprenup-prod --cli-input-json file://gsi-config.json
-```
-
-## 🔧 Development
+## 🔧 Development Commands
 
 ### Available Scripts
 
@@ -380,10 +351,10 @@ npm run preview      # Preview production build
 
 ```bash
 # Start DynamoDB Local
-npm run dynamodb:local
+docker run -d -p 8000:8000 --name dynamodb-local amazon/dynamodb-local -jar DynamoDBLocal.jar -sharedDb -inMemory
 
 # Set up tables with GSIs
-npm run setup:tables
+cd backend && npm run setup:tables
 
 # Access DynamoDB Local admin interface
 open http://localhost:8000/shell
@@ -392,48 +363,27 @@ open http://localhost:8000/shell
 aws dynamodb scan --table-name letsdoprenup-data --endpoint-url http://localhost:8000
 ```
 
-## 🗄️ Migration from PostgreSQL/Prisma
+## 🎯 Enhanced Features
 
-### Key Changes Made
+### 5-Step Process Implementation
+1. **State Selection**: Interactive state picker with legal requirement previews
+2. **Requirements Review**: Detailed breakdown of state-specific legal requirements
+3. **Comprehensive Questionnaire**: Multi-faceted assessment of financial and personal situation
+4. **AI Analysis**: Intelligent recommendation engine for attorney review needs
+5. **Notarization Options**: Flexible notarization and attorney review choices
 
-1. **Database Layer**: Complete replacement of Prisma/PostgreSQL with DynamoDB
-2. **Versioning System**: Implemented V0 versioning for all entities
-3. **Single Table Design**: All data stored in one table with composite keys
-4. **Service Layer**: Created comprehensive service classes for each entity type
-5. **Lambda Ready**: All handlers are stateless and Lambda-compatible
+### AI-Powered Analysis
+- **Complexity Assessment**: Analyzes questionnaire responses to determine prenup complexity
+- **Attorney Review Recommendations**: Provides personalized guidance on legal counsel needs
+- **Confidence Scoring**: Shows confidence level in recommendations
+- **State-Specific Considerations**: Factors in state requirements for recommendations
 
-### Data Migration Strategy
-
-#### User Versioning
-- Latest data always stored with `SK = "V0"`
-- Historical versions stored as `V1`, `V2`, etc.
-- Automatic version creation on updates
-
-#### Denormalization
-- Strategic denormalization for performance (emails in prenups, names in references)
-- Reduced need for complex joins
-- Improved query performance
-
-#### Access Patterns
-- Optimized for application query patterns
-- GSIs for efficient lookups by email, entity type, relationships
-- Batch operations for related data
-
-### Migration Notes
-
-#### Before Migration (Prisma)
-```javascript
-const user = await prisma.user.findUnique({
-  where: { email },
-  include: { createdPrenups: true }
-});
-```
-
-#### After Migration (DynamoDB)
-```javascript
-const user = await userService.getUserByEmail(email);
-const prenups = await prenupService.getPrenupsByUser(user.id);
-```
+### State-Specific Compliance
+- **California**: 7-day waiting period, fairness testing, full disclosure requirements
+- **Washington**: Community property rules, comprehensive disclosure requirements
+- **New York**: Mandatory notarization, fair and reasonable standards
+- **Washington D.C.**: UPAA compliance, disclosure requirements
+- **Virginia**: Voluntariness emphasis, full disclosure requirements
 
 ## 🛡️ Security Features
 
@@ -446,7 +396,7 @@ const prenups = await prenupService.getPrenupsByUser(user.id);
 - Access control for all operations
 - Version history for audit trails
 
-## 🚢 Deployment
+## 🚢 Deployment Options
 
 ### Docker Deployment
 ```bash
@@ -505,11 +455,12 @@ For support and questions:
 
 ## 🔄 Version History
 
-### v2.0.0 - DynamoDB Migration
-- ✅ Complete migration from PostgreSQL/Prisma to DynamoDB
-- ✅ Implemented V0 versioning system
-- ✅ Lambda-ready architecture
-- ✅ Single-table design with optimized access patterns
-- ✅ Enhanced security and validation
-- ✅ Docker setup with DynamoDB Local
-- ✅ Comprehensive service layer architecture
+### v2.1.0 - Enhanced Platform
+- ✅ Enhanced homepage with "Build Your Prenup With Confidence" messaging
+- ✅ Implemented comprehensive 5-step wizard process
+- ✅ Added AI-powered analysis and recommendations
+- ✅ State-specific compliance with detailed requirements
+- ✅ Modern, responsive UI with improved UX
+- ✅ Notarization and attorney review options
+- ✅ Enhanced testing and deployment instructions
+- ✅ Complete local development setup guide
