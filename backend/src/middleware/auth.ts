@@ -1,10 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
-import { PrismaClient } from '@prisma/client';
-import { config } from '../utils/config';
+import { userService } from '../services/userService';
 import { createError } from './errorHandler';
-
-const prisma = new PrismaClient();
 
 export interface AuthRequest extends Request {
   user?: {
@@ -22,21 +18,25 @@ export const authenticate = async (req: AuthRequest, res: Response, next: NextFu
       throw createError('Access denied. No token provided.', 401);
     }
 
-    const decoded = jwt.verify(token, config.jwtSecret) as any;
+    const decoded = userService.verifyToken(token);
+    if (!decoded) {
+      throw createError('Invalid token.', 401);
+    }
     
-    const user = await prisma.user.findUnique({
-      where: { id: decoded.id },
-      select: { id: true, email: true, role: true }
-    });
+    const user = await userService.getUserById(decoded.id);
 
     if (!user) {
       throw createError('Invalid token.', 401);
     }
 
-    req.user = user;
+    req.user = {
+      id: user.id,
+      email: user.email,
+      role: user.role
+    };
     next();
-  } catch (error) {
-    if (error instanceof jwt.JsonWebTokenError) {
+  } catch (error: any) {
+    if (error.name === 'JsonWebTokenError') {
       next(createError('Invalid token.', 401));
     } else {
       next(error);

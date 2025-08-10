@@ -1,12 +1,13 @@
 import express from 'express';
-import { PrismaClient } from '@prisma/client';
 import Joi from 'joi';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { createError, asyncHandler } from '../middleware/errorHandler';
 import { StateComplianceService } from '../services/stateCompliance';
+import { prenupService } from '../services/prenupService';
+import { USState, PrenupStatus } from '../types/entities';
+import { Handler } from 'aws-lambda';
 
 const router = express.Router();
-const prisma = new PrismaClient();
 const stateCompliance = new StateComplianceService();
 
 // Validation schemas
@@ -24,58 +25,32 @@ const updatePrenupSchema = Joi.object({
 
 // Get all prenups for user
 router.get('/', authenticate, asyncHandler(async (req: AuthRequest, res: express.Response) => {
-  const prenups = await prisma.prenup.findMany({
-    where: {
-      OR: [
-        { createdBy: req.user!.id },
-        { partnerId: req.user!.id }
-      ]
-    },
-    include: {
-      creator: {
-        select: { id: true, firstName: true, lastName: true, email: true }
-      },
-      partner: {
-        select: { id: true, firstName: true, lastName: true, email: true }
-      }
-    },
-    orderBy: { updatedAt: 'desc' }
-  });
+  const prenups = await prenupService.getPrenupsByUser(req.user!.id);
+  
+  // Get creator and partner info for each prenup
+  const prenupDetails = await Promise.all(
+    prenups.map(async (prenup) => {
+      return await prenupService.getPrenupWithUsers(prenup.id);
+    })
+  );
 
   res.json({
     success: true,
-    data: { prenups }
+    data: { prenups: prenupDetails }
   });
 }));
 
 // Get single prenup
 router.get('/:id', authenticate, asyncHandler(async (req: AuthRequest, res: express.Response) => {
-  const prenup = await prisma.prenup.findFirst({
-    where: {
-      id: req.params.id,
-      OR: [
-        { createdBy: req.user!.id },
-        { partnerId: req.user!.id }
-      ]
-    },
-    include: {
-      creator: {
-        select: { id: true, firstName: true, lastName: true, email: true }
-      },
-      partner: {
-        select: { id: true, firstName: true, lastName: true, email: true }
-      },
-      documents: true,
-      signatures: {
-        include: {
-          user: {
-            select: { id: true, firstName: true, lastName: true, email: true }
-          }
-        }
-      }
-    }
-  });
+  const { id } = req.params;
+  
+  // Check user access
+  const hasAccess = await prenupService.userHasAccessToPrenup(id, req.user!.id);
+  if (!hasAccess) {
+    throw createError('Prenup not found', 404);
+  }
 
+  const prenup = await prenupService.getPrenupWithUsers(id);
   if (!prenup) {
     throw createError('Prenup not found', 404);
   }
@@ -98,27 +73,17 @@ router.post('/', authenticate, asyncHandler(async (req: AuthRequest, res: expres
 
   const { title, state } = value;
 
-  const prenup = await prisma.prenup.create({
-    data: {
-      title,
-      state,
-      createdBy: req.user!.id,
-      progress: {
-        currentStep: 1,
-        completedSteps: [],
-        totalSteps: stateCompliance.getStateRequirements(state).totalSteps
-      }
-    },
-    include: {
-      creator: {
-        select: { id: true, firstName: true, lastName: true, email: true }
-      }
-    }
+  const prenup = await prenupService.createPrenup({
+    title,
+    state: state as USState,
+    createdBy: req.user!.id
   });
+
+  const prenupWithUsers = await prenupService.getPrenupWithUsers(prenup.id);
 
   res.status(201).json({
     success: true,
-    data: { prenup },
+    data: { prenup: prenupWithUsers },
     message: 'Prenup created successfully'
   });
 }));
@@ -130,41 +95,30 @@ router.put('/:id', authenticate, asyncHandler(async (req: AuthRequest, res: expr
     throw createError(error.details[0].message, 400);
   }
 
-  const prenup = await prisma.prenup.findFirst({
-    where: {
-      id: req.params.id,
-      OR: [
-        { createdBy: req.user!.id },
-        { partnerId: req.user!.id }
-      ]
-    }
-  });
+  const { id } = req.params;
 
+  // Check user access
+  const hasAccess = await prenupService.userHasAccessToPrenup(id, req.user!.id);
+  if (!hasAccess) {
+    throw createError('Prenup not found', 404);
+  }
+
+  const prenup = await prenupService.getPrenupById(id);
   if (!prenup) {
     throw createError('Prenup not found', 404);
   }
 
   // Check if user can edit (must be creator or partner, and not yet executed)
-  if (prenup.status === 'EXECUTED') {
+  if (prenup.status === PrenupStatus.EXECUTED) {
     throw createError('Cannot modify executed prenup', 400);
   }
 
-  const updatedPrenup = await prisma.prenup.update({
-    where: { id: req.params.id },
-    data: value,
-    include: {
-      creator: {
-        select: { id: true, firstName: true, lastName: true, email: true }
-      },
-      partner: {
-        select: { id: true, firstName: true, lastName: true, email: true }
-      }
-    }
-  });
+  const updatedPrenup = await prenupService.updatePrenup(id, value);
+  const prenupWithUsers = await prenupService.getPrenupWithUsers(updatedPrenup.id);
 
   res.json({
     success: true,
-    data: { prenup: updatedPrenup },
+    data: { prenup: prenupWithUsers },
     message: 'Prenup updated successfully'
   });
 }));
@@ -172,63 +126,44 @@ router.put('/:id', authenticate, asyncHandler(async (req: AuthRequest, res: expr
 // Invite partner
 router.post('/:id/invite-partner', authenticate, asyncHandler(async (req: AuthRequest, res: express.Response) => {
   const { email } = req.body;
+  const { id } = req.params;
 
   if (!email) {
     throw createError('Partner email is required', 400);
   }
 
-  const prenup = await prisma.prenup.findFirst({
-    where: {
-      id: req.params.id,
-      createdBy: req.user!.id
-    }
-  });
-
+  const prenup = await prenupService.getPrenupById(id);
   if (!prenup) {
-    throw createError('Prenup not found or you are not the creator', 404);
+    throw createError('Prenup not found', 404);
+  }
+
+  if (prenup.createdBy !== req.user!.id) {
+    throw createError('Only prenup creator can invite partners', 403);
   }
 
   if (prenup.partnerId) {
     throw createError('Partner already assigned to this prenup', 400);
   }
 
-  // Check if partner exists as user
-  const partnerUser = await prisma.user.findUnique({
-    where: { email }
-  });
-
-  if (partnerUser) {
-    // If partner is already a user, directly assign them
-    const updatedPrenup = await prisma.prenup.update({
-      where: { id: req.params.id },
-      data: { partnerId: partnerUser.id }
-    });
-
-    res.json({
-      success: true,
-      data: { prenup: updatedPrenup },
-      message: 'Partner added successfully'
-    });
-  } else {
-    // Create invitation token for new user
-    const token = require('crypto').randomBytes(32).toString('hex');
+  try {
+    const invitation = await prenupService.invitePartner(id, req.user!.id, email);
     
-    await prisma.partnerInvitation.create({
-      data: {
-        email,
-        prenupId: req.params.id,
-        invitedBy: req.user!.id,
-        token,
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
-      }
-    });
-
-    // TODO: Send email invitation
-
-    res.json({
-      success: true,
-      message: 'Invitation sent successfully'
-    });
+    if (invitation.id === 'direct-assignment') {
+      const updatedPrenup = await prenupService.getPrenupWithUsers(id);
+      res.json({
+        success: true,
+        data: { prenup: updatedPrenup },
+        message: 'Partner added successfully'
+      });
+    } else {
+      // TODO: Send email invitation
+      res.json({
+        success: true,
+        message: 'Invitation sent successfully'
+      });
+    }
+  } catch (error: any) {
+    throw createError(error.message, 400);
   }
 }));
 
@@ -247,5 +182,88 @@ router.get('/states/:state/requirements', asyncHandler(async (req: express.Reque
     data: { requirements }
   });
 }));
+
+// Lambda-compatible handlers
+export const getPrenupsHandler: Handler = async (event, context) => {
+  try {
+    // Extract user ID from JWT token in Authorization header
+    const authHeader = event.headers.Authorization || event.headers.authorization;
+    if (!authHeader) {
+      return {
+        statusCode: 401,
+        body: JSON.stringify({
+          success: false,
+          error: 'Authorization header required'
+        })
+      };
+    }
+
+    // TODO: Implement JWT verification and user extraction
+    // For now, this is a placeholder
+    const userId = 'user-from-jwt';
+    
+    const prenups = await prenupService.getPrenupsByUser(userId);
+    
+    return {
+      statusCode: 200,
+      body: JSON.stringify({
+        success: true,
+        data: { prenups }
+      })
+    };
+  } catch (error: any) {
+    return {
+      statusCode: 500,
+      body: JSON.stringify({
+        success: false,
+        error: error.message
+      })
+    };
+  }
+};
+
+export const createPrenupHandler: Handler = async (event, context) => {
+  try {
+    const body = JSON.parse(event.body || '{}');
+    const { error, value } = createPrenupSchema.validate(body);
+    
+    if (error) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({
+          success: false,
+          error: error.details[0].message
+        })
+      };
+    }
+
+    // TODO: Extract user ID from JWT token
+    const userId = 'user-from-jwt';
+    
+    const { title, state } = value;
+    const prenup = await prenupService.createPrenup({
+      title,
+      state: state as USState,
+      createdBy: userId
+    });
+
+    return {
+      statusCode: 201,
+      body: JSON.stringify({
+        success: true,
+        data: { prenup },
+        message: 'Prenup created successfully'
+      })
+    };
+  } catch (error: any) {
+    return {
+      statusCode: 500,
+      body: JSON.stringify({
+        success: false,
+        error: error.message
+      })
+    };
+  }
+};
 
 export default router;
