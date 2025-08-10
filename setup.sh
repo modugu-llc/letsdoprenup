@@ -20,7 +20,7 @@ if command -v docker &> /dev/null; then
     echo "✅ Docker found: $(docker --version | head -n1)"
     DOCKER_AVAILABLE=true
 else
-    echo "⚠️  Docker not found - you can still run the app but will need a local PostgreSQL database"
+    echo "⚠️  Docker not found - you can still run the app but will need to start DynamoDB Local separately"
     DOCKER_AVAILABLE=false
 fi
 
@@ -63,14 +63,14 @@ if [ "$DOCKER_AVAILABLE" = true ]; then
     echo "  2. The application will be available at:"
     echo "     - Frontend: http://localhost:3000"
     echo "     - Backend API: http://localhost:3001"
-    echo "     - Database: PostgreSQL on port 5432"
+    echo "     - DynamoDB Local: http://localhost:8000"
     echo
 fi
 
 echo "Option 2: Manual Setup"
-echo "  1. Start PostgreSQL database on localhost:5432"
-echo "  2. Update backend/.env with your database URL"
-echo "  3. Run database migrations: cd backend && npx prisma migrate dev"
+echo "  1. Start DynamoDB Local: docker run -p 8000:8000 amazon/dynamodb-local -jar DynamoDBLocal.jar -sharedDb -inMemory"
+echo "  2. Update backend/.env with DynamoDB configuration"
+echo "  3. Set up database tables: cd backend && npm run setup:tables"
 echo "  4. Start backend: cd backend && npm run dev"
 echo "  5. Start frontend: cd frontend && npm run dev"
 echo
@@ -89,7 +89,7 @@ echo
 echo "🔧 Tech Stack:"
 echo "  • Frontend: React 18 + TypeScript + Tailwind CSS"
 echo "  • Backend: Node.js + Express + TypeScript"
-echo "  • Database: PostgreSQL + Prisma ORM"
+echo "  • Database: DynamoDB with V0 versioning system"
 echo "  • Authentication: JWT-based"
 echo "  • UI: Headless UI + Heroicons"
 echo "  • Build: Vite (frontend) + TypeScript (backend)"

@@ -31,8 +31,7 @@ RUN npm install --omit=dev
 # Copy built application from builder stage
 COPY --from=builder /app/dist ./dist
 
-# Copy Prisma schema file (needed for prisma generate and migrate deploy)
-COPY --from=builder /app/prisma ./prisma
+
 
 # Copy and set up entrypoint script
 COPY docker-entrypoint.sh ./
